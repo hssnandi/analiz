@@ -1,6 +1,6 @@
 streamlit
+streamlit-webrtc
 opencv-python-headless
 mediapipe
 numpy
 Pillow
-pip install streamlit-webrtc
