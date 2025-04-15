@@ -13,6 +13,45 @@ st.title("📸 تشخیص فرم صورت و پیشنهاد مدل مو")
 FRAME_WINDOW = st.empty()
 camera = cv2.VideoCapture(0)
 
+import streamlit as st
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
+import cv2
+import numpy as np
+
+def capture_image():
+    # دیکشنری برای ذخیره تصویر گرفته شده
+    image = None
+    
+    def video_frame_callback(frame):
+        nonlocal image
+        # اینجا می‌تونی تصویر دوربین رو دریافت و پردازش کنی
+        image = frame.to_ndarray(format="bgr24")
+        return frame
+
+    # استریم دوربین
+    webrtc_ctx = webrtc_streamer(
+        key="example",
+        mode=WebRtcMode.SENDRECV,
+        video_frame_callback=video_frame_callback,
+        media_stream_constraints={"video": True},
+    )
+
+    if webrtc_ctx.state.playing:
+        # نمایش کادر هنگام گرفتن عکس
+        if image is not None:
+            st.image(image, caption="Current Frame", use_column_width=True)
+        
+        # گرفتن عکس
+        if st.button("Capture Image"):
+            if image is not None:
+                # ذخیره تصویر گرفته شده
+                img_path = "captured_image.png"
+                cv2.imwrite(img_path, image)
+                st.image(img_path, caption="Captured Image", use_column_width=True)
+
+# نمایش کادر دوربین و امکان گرفتن عکس
+capture_image()
+
 # بارگذاری مدل MediaPipe
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1)
