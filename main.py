@@ -54,7 +54,7 @@ while camera.isOpened():
         break
 
 camera.release()
-cv2.destroyAllWindows()
+
 
 if captured_image is not None:
     st.subheader("📊 آنالیز فرم صورت")
