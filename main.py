@@ -1,24 +1,16 @@
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
 import cv2
-import mediapipe as mp
 import numpy as np
-from PIL import Image
+import mediapipe as mp
 import os
-import math
+from PIL import Image
 from face_shape_detector import detect_face_shape
 from utils import analyze_image_quality, draw_overlay
 
 st.set_page_config(page_title="تشخیص فرم صورت", layout="centered")
 st.title("📸 تشخیص فرم صورت و پیشنهاد مدل مو")
 
-FRAME_WINDOW = st.image([])
-camera = cv2.VideoCapture(0)
-
-# بارگذاری مدل MediaPipe
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1)
-
-# رابط کاربری
 st.markdown("""
 <div style='text-align:center;'>
     لطفاً صورت خود را در مرکز دایره قرار دهید. نور کافی داشته باشید. از عینک یا ماسک استفاده نکنید.
@@ -26,81 +18,53 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 captured_image = None
-start_button = st.button("📷 گرفتن عکس")
+status_placeholder = st.empty()
+captured_img_placeholder = st.empty()
 
-while camera.isOpened():
-    ret, frame = camera.read()
-    if not ret:
-        st.error("دوربین پیدا نشد.")
-        break
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
 
-    image = cv2.flip(frame, 1)
-    img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+image_holder = {"image": None}
+
+def video_frame_callback(frame):
+    img = frame.to_ndarray(format="bgr24")
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(img_rgb)
 
-    overlay_img = draw_overlay(img_rgb.copy())
+    overlay = draw_overlay(img_rgb.copy())
     quality_ok, reason = analyze_image_quality(results, img_rgb)
 
-    if quality_ok:
-        cv2.circle(overlay_img, (320, 240), 140, (0, 255, 0), 3)  # دایره سبز
+    center_color = (0, 255, 0) if quality_ok else (128, 128, 128)
+    cv2.circle(overlay, (320, 240), 140, center_color, 3)
+
+    if not quality_ok:
+        status_placeholder.warning(reason)
     else:
-        cv2.circle(overlay_img, (320, 240), 140, (128, 128, 128), 3)  # دایره خاکستری
-        st.warning(reason)
+        status_placeholder.info("✅ شرایط مناسب است، برای گرفتن عکس روی دکمه کلیک کنید.")
 
-    FRAME_WINDOW.image(overlay_img)
+    image_holder["image"] = img_rgb if quality_ok else None
+    return av.VideoFrame.from_ndarray(overlay, format="rgb24")
 
-    if start_button and quality_ok:
-        captured_image = img_rgb
-        break
+webrtc_ctx = webrtc_streamer(
+    key="face-analyzer",
+    mode=WebRtcMode.SENDRECV,
+    video_frame_callback=video_frame_callback,
+    media_stream_constraints={"video": True, "audio": False},
+    async_processing=True,
+)
 
-camera.release()
-
+if st.button("📷 گرفتن عکس"):
+    if image_holder["image"] is not None:
+        captured_image = image_holder["image"]
+        captured_img_placeholder.image(captured_image, caption="تصویر ثبت شده", use_column_width=True)
+    else:
+        st.error("⛔ شرایط عکس مناسب نیست. لطفاً نور، موقعیت صورت و مرکز تصویر را بررسی کنید.")
 
 if captured_image is not None:
     st.subheader("📊 آنالیز فرم صورت")
     shape = detect_face_shape(captured_image)
     st.success(f"فرم صورت شما: {shape}")
 
-    import streamlit as st
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
-import cv2
-import numpy as np
-
-def capture_image():
-    # دیکشنری برای ذخیره تصویر گرفته شده
-    image = None
-    
-    def video_frame_callback(frame):
-        nonlocal image
-        # اینجا می‌تونی تصویر دوربین رو دریافت و پردازش کنی
-        image = frame.to_ndarray(format="bgr24")
-        return frame
-
-    # استریم دوربین
-    webrtc_ctx = webrtc_streamer(
-        key="example",
-        mode=WebRtcMode.SENDRECV,
-        video_frame_callback=video_frame_callback,
-        media_stream_constraints={"video": True},
-    )
-
-    if webrtc_ctx.state.playing:
-        # نمایش کادر هنگام گرفتن عکس
-        if image is not None:
-            st.image(image, caption="Current Frame", use_column_width=True)
-        
-        # گرفتن عکس
-        if st.button("Capture Image"):
-            if image is not None:
-                # ذخیره تصویر گرفته شده
-                img_path = "captured_image.png"
-                cv2.imwrite(img_path, image)
-                st.image(img_path, caption="Captured Image", use_column_width=True)
-
-# نمایش کادر دوربین و امکان گرفتن عکس
-capture_image()
-
-    # نمایش مدل‌های پیشنهادی
     st.subheader("💇 مدل‌های موی پیشنهادی")
     model_path = os.path.join("model_images", shape.lower())
     if os.path.exists(model_path):
